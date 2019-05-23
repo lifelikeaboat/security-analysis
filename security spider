@@ -1,0 +1,144 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+# Created on 2019-04-15 01:35:42
+# Project: securityanalysis
+
+from pyspider.libs.base_handler import *
+import re
+import requests
+from bs4 import BeautifulSoup
+
+class Handler(BaseHandler):
+    crawl_config = {
+    }
+
+    @every(minutes=24 * 60)
+    def on_start(self):
+        self.crawl('http://quote.eastmoney.com/stock_list.html#sz', callback=self.index_page)
+
+    @config(age=10 * 24 * 60 * 60)
+    def index_page(self, response):
+        sh=re.compile(r'quote.eastmoney.com/sh(\d+)')
+        sz=re.compile(r'quote.eastmoney.com/sz(\d+)')
+        shcode=re.findall(sh,response.text)
+        szcode=re.findall(sz,response.text)
+        for code in szcode:
+            holderurl='http://f9.eastmoney.com/soft/gp5_511.php?code='+code+'02'
+            self.crawl(holderurl, callback=self.detail_page)
+        for code in shcode:
+            holderurl='http://f9.eastmoney.com/soft/gp5_511.php?code='+code+'01'
+            self.crawl(holderurl, callback=self.detail_page)
+    @config(priority=2)
+    def detail_page(self, response):
+        data=re.findall(r'<span>(.*)</span>',response.text)
+        i=0
+        finaldata=[]
+        if data!=[]:
+            for each in data:
+                if each!="股东总户数(户)":
+                    i=i+1
+                else:
+                    break
+            data=data[:i*9-1]
+            for each in data:
+                out=each.replace('&nbsp;','')
+                out=out.replace(' ','')
+                out=out.replace(',','')
+                finaldata.append(out)
+            period=finaldata[:i-1]
+            totalholder=finaldata[i:i*2-1]
+            toptenholder=finaldata[i*8:]
+            code=response.url[-8:-2]
+            if response.url[-2:]=='01':
+                FAMCurl='http://quote.eastmoney.com/sh'+code+'.html'
+                toptenurl='http://f9.eastmoney.com/soft/gp51_511.php?code='+code+'01'
+                FAMC_page=requests.get(FAMCurl)
+                FAMC_page.encoding='GB2312'
+                try:
+                    PE=re.search('<span id="gt6_2">(.*)</span>',FAMC_page.text).group(1)
+                except AttributeError:
+                    PE='B'
+                try:
+                    PB=re.search('<span id="gt13_2">(.*)</span>',FAMC_page.text).group(1)
+                except AttributeError:
+                    PB='B'
+                try:
+                    FAMC=re.search(u'<span id="gt14_2">(.*)</span>',FAMC_page.text).group(1)
+                    FAMC=FAMC[:-1]
+                except AttributeError:
+                    FAMC='B'
+                try:
+                    name=re.search('"name">(.*)</h2>',FAMC_page.text).group(1)
+                except:
+                    name='B'
+                topten_page=requests.get(toptenurl)
+                topten=re.findall('<p class="%"><span>(.*)&nbsp;</span>',topten_page.text)
+                topten=topten[:10]
+                sum=0
+                for each in topten:
+                    each=float(each)
+                    if each>=5:
+                        sum=sum+each            
+            if response.url[-2:]=='02':
+                FAMCurl='http://quote.eastmoney.com/sz'+code+'.html'
+                toptenurl='http://f9.eastmoney.com/soft/gp51_511.php?code='+code+'02'
+                FAMC_page=requests.get(FAMCurl)
+                FAMC_page.encoding='GB2312'
+                try:
+                    PE=re.search('<span id="gt6_2">(.*)</span>',FAMC_page.text).group(1)
+                except AttributeError:
+                    PE='B'
+                try:
+                    PB=re.search('<span id="gt13_2">(.*)</span>',FAMC_page.text).group(1)
+                except AttributeError:
+                    PB='B'
+                try:
+                    FAMC=re.search(u'<span id="gt14_2">(.*)</span>',FAMC_page.text).group(1)
+                    FAMC=FAMC[:-1]
+                except AttributeError:
+                    FAMC='B'
+                try:
+                    name=re.search('"name">(.*)</h2>',FAMC_page.text).group(1)
+                except:
+                    name='B'
+                topten_page=requests.get(toptenurl)
+                topten=re.findall('<p class="%"><span>(.*)&nbsp;</span>',topten_page.text)
+                topten=topten[:10]
+                sum=0
+                for each in topten:
+                    each=float(each)
+                    if each>=5:
+                        sum=sum+each     
+            return {
+                "code": code,
+                "period": period,
+                "totalholder":totalholder,
+                "toptenholder":toptenholder,
+                "PE":PE,
+                "PB":PB,
+                "FAMC":FAMC,
+                "SUM":sum,
+                "name":name
+                
+            }
+
+    def FAMC_page(self,response):
+        PE=re.findall('<span id="gt6_2">(.*)</span>',response.text)
+        PB=re.findall('<span id="gt13_2">(.*)</span>',response.text)
+        FAMC=re.findall('<span id="gt14_2">(.*)亿</span>',response.text)
+        return{
+            'PE':PE,
+            'PB':PB,
+            'FAMC':FAMC
+        }
+    def topten_page(self,response):
+        topten=re.findall('<p class="%"><span>(.*)&nbsp;</span>',response.text)
+        topten=topten[:10]
+        sum=0
+        for each in topten:
+            each=float(each)
+            if each>=5:
+                sum=sum+each
+        return{
+            "sum":sum
+        }
