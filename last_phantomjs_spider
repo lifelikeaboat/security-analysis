@@ -1,0 +1,161 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+# Created on 2021-05-04 10:10:36
+# Project: security
+from pyspider.libs.base_handler import *
+import re
+import requests
+from bs4 import BeautifulSoup
+import json
+
+class Handler(BaseHandler):
+    crawl_config = {
+    }
+
+    @every(minutes=24 * 60)
+    def on_start(self):
+        self.crawl('http://quote.eastmoney.com/center/gridlist.html#hs_a_board', callback=self.index_page,fetch_type='js')
+
+    @config(age=10 * 24 * 60 * 60)
+    def index_page(self, response):
+        with open("/home/lifelikeaboat/Desktop/number.json","r") as f:
+            codenumber=json.load(f)
+            f.close()
+        shcode=[]
+        szcode=[]
+        for each in codenumber:
+            if each[7]=='1':
+                if each[:3]!='688':
+                    shcode.append(each[:6])
+            else:
+                szcode.append(each[:6])
+        for code in szcode:
+            #
+            FAMCurl='http://quote.eastmoney.com/sz'+code+'.html'
+            self.crawl(FAMCurl, callback=self.detail_page,fetch_type='js')
+        for code in shcode:
+            #
+            FAMCurl='http://quote.eastmoney.com/sh'+code+'.html'
+            self.crawl(FAMCurl, callback=self.detail_page,fetch_type='js')
+    @config(priority=2)
+    def detail_page(self, response):
+        code=response.url[-11:-5]        
+        try:
+            PE=re.search('<span id="gt6_2">(.*?)</span>',response.text).group(1)
+        except AttributeError:
+            PE='B'
+        try:
+            PB=re.search('<span id="gt13_2">(.*?)</span>',response.text).group(1)
+        except AttributeError:
+            PB='B'
+        try:
+            FAMC=re.search(u'<span id="gt14_2">(.*?)</span>',response.text).group(1)
+            FAMC=FAMC[:-1]
+        except AttributeError:
+            FAMC='B'
+        try:
+            name=re.search('"name">(.*)</h2>',response.text).group(1)
+        except:
+            name='B'
+        try:
+            delist=re.search('<a href="http://data.eastmoney.com/tfpxx/" target="_blank" class="red wz">已退市</a>',response.text).group(0)
+        except AttributeError:
+            delist='B'
+        try:
+            trade=response.doc('.mt9 > h3 > a').text()
+        except :
+            trade='B'
+        if delist=='B' :
+            if response.url[-13:-11]=='sh':
+                toptenurl='http://f9.eastmoney.com/soft/gp51_511.php?code='+code+'01'
+                topten_page=requests.get(toptenurl)
+                topten=re.findall('<p class="%"><span>(.*)&nbsp;</span>',topten_page.text)
+                topten=topten[:10]
+                sum=0
+                for each in topten:
+                    each=float(each)
+                    if each>=5:
+                        sum=sum+each       
+                holderurl='http://f9.eastmoney.com/soft/gp5_511.php?code='+code+'01'
+                holder_page=requests.get(holderurl)
+                i=0
+                finaldata=[]
+                data=re.findall(r'<span>(.*)</span>',holder_page.text)
+                if data!=[]:
+                    for each in data:
+                        if each!="股东总户数(户)":
+                            i=i+1
+                        else:
+                            break
+                    data=data[:i*9-1]
+                    for each in data:
+                        out=each.replace('&nbsp;','')
+                        out=out.replace(' ','')
+                        out=out.replace(',','')
+                        finaldata.append(out)
+                    period=finaldata[:i-1]
+                    totalholder=finaldata[i:i*2-1]
+                    toptenholder=finaldata[i*8:]
+            if response.url[-13:-11]=='sz':
+                toptenurl='http://f9.eastmoney.com/soft/gp51_511.php?code='+code+'02'
+                topten_page=requests.get(toptenurl)
+                topten=re.findall('<p class="%"><span>(.*)&nbsp;</span>',topten_page.text)
+                topten=topten[:10]
+                sum=0
+                for each in topten:
+                    each=float(each)
+                    if each>=5:
+                        sum=sum+each     
+                holderurl='http://f9.eastmoney.com/soft/gp5_511.php?code='+code+'02'
+                holder_page=requests.get(holderurl)
+                i=0
+                finaldata=[]
+                data=re.findall(r'<span>(.*)</span>',holder_page.text)
+                if data!=[]:
+                    for each in data:
+                        if each!="股东总户数(户)":
+                            i=i+1
+                        else:
+                            break
+                    data=data[:i*9-1]
+                    for each in data:
+                        out=each.replace('&nbsp;','')
+                        out=out.replace(' ','')
+                        out=out.replace(',','')
+                        finaldata.append(out)
+                    period=finaldata[:i-1]
+                    totalholder=finaldata[i:i*2-1]
+                    toptenholder=finaldata[i*8:]
+            return {
+                "code": code,
+                "period": period,
+                "totalholder":totalholder,
+                "toptenholder":toptenholder,
+                "PE":PE,
+                "PB":PB,
+                "FAMC":FAMC,
+                "SUM":sum,
+                "name":name,
+                "trade":trade
+                }
+
+    def FAMC_page(self,response):
+        PE=re.findall('<span id="gt6_2">(.*)</span>',response.text)
+        PB=re.findall('<span id="gt13_2">(.*)</span>',response.text)
+        FAMC=re.findall('<span id="gt14_2">(.*)亿</span>',response.text)
+        return{
+            'PE':PE,
+            'PB':PB,
+            'FAMC':FAMC
+        }
+    def topten_page(self,response):
+        topten=re.findall('<p class="%"><span>(.*)&nbsp;</span>',response.text)
+        topten=topten[:10]
+        sum=0
+        for each in topten:
+            each=float(each)
+            if each>=5:
+                sum=sum+each
+        return{
+            "sum":sum
+        }
