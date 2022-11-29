@@ -1,0 +1,180 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+# Created on 2021-05-04 10:10:36
+# Project: security
+from pyspider.libs.base_handler import *
+import re
+import requests
+from bs4 import BeautifulSoup
+import json
+
+class Handler(BaseHandler):
+    crawl_config = {
+    }
+
+    @every(minutes=24 * 60)
+    def on_start(self):
+        self.crawl('http://quote.eastmoney.com/center/gridlist.html#hs_a_board', callback=self.index_page,fetch_type='js')
+
+    @config(age=10 * 24 * 60 * 60)
+    def index_page(self, response):
+        with open("/home/lifelikeaboat/Desktop/number.json","r") as f:
+            codenumber=json.load(f)
+            f.close()
+        shcode=[]
+        szcode=[]
+        for each in codenumber:
+            if each[7]=='1':
+                if each[:3]!='688':
+                    shcode.append(each[:6])
+            else:
+                szcode.append(each[:6])
+        for code in szcode:
+            #
+            FAMCurl='http://push2delay.eastmoney.com/api/qt/stock/get?invt=2&fltt=1&cb=jQuery351044383936848104066_1661598780920&fields=f57%2Cf58%2Cf117%2Cf162%2Cf167&secid=0.'+code+'&ut=fa5fd1943c7b386f172d6893dbfba10b&wbp2u=%7C0%7C0%7C0%7Cweb&_=1661598780921'
+            self.crawl(FAMCurl, callback=self.detail_page,fetch_type='js')
+        for code in shcode:
+            #
+            FAMCurl='http://push2delay.eastmoney.com/api/qt/stock/get?invt=2&fltt=1&cb=jQuery351044383936848104066_1661598780920&fields=f57%2Cf58%2Cf117%2Cf162%2Cf167&secid=1.'+code+'&ut=fa5fd1943c7b386f172d6893dbfba10b&wbp2u=%7C0%7C0%7C0%7Cweb&_=1661598780921'
+            self.crawl(FAMCurl, callback=self.detail_page,fetch_type='js')
+    @config(priority=2)
+    def detail_page(self, response):
+        try:
+            code=re.search('"f57":"(\d*?)"',response.text).group(1)
+        except AttributeError:
+            code='B'   
+        try:
+            PE=re.search('"f162":(\d*?),"',response.text).group(1)
+        except AttributeError:
+            PE='B'
+        if PE in ['-','B']:
+            PE='B'
+        else:
+            PE=float(PE)/100
+        try:
+            PB=re.search('"f167":(\d*?)}',response.text).group(1)
+        except AttributeError:
+            PB='B'
+        if PB in ['-','B']:
+            PB='B'
+        else:
+            PB=float(PB)/100
+        try:
+            FAMC=re.search('"f117":(.*?),"',response.text).group(1)
+        except AttributeError:
+            FAMC='B'
+        if FAMC in ['"-"','B']:
+            FAMC='B'
+        else:
+            FAMC=float(FAMC)/100000000
+        try:
+            name=re.search('"f58":"(.*?)"',response.text).group(1)
+        except:
+            name='B'
+        marketype=re.search('&secid=(\d?).',response.url).group(1)
+        if FAMC != 'B' :
+            if marketype=='1':
+                newurl='http://push2delay.eastmoney.com/api/qt/slist/get?fltt=1&invt=2&cb=jQuery351044383936848104066_1661598780929&fields=f14&secid=1.'+code+'&ut=fa5fd1943c7b386f172d6893dbfba10b&pn=1&np=1&spt=1&wbp2u=%7C0%7C0%7C0%7Cweb&_=1661598780930'
+                r1=requests.get(newurl)
+                try:
+                    trade=re.findall('"f14":"(.*?)"',r1.text)[1]
+                except :
+                    trade='B'
+                toptenurl='http://f9.eastmoney.com/soft/gp51_511.php?code='+code+'01'
+                topten_page=requests.get(toptenurl)
+                topten=re.findall('<p class="%"><span>(.*)&nbsp;</span>',topten_page.text)
+                topten=topten[:10]
+                sum=0
+                for each in topten:
+                    each=float(each)
+                    if each>=5:
+                        sum=sum+each       
+                holderurl='http://f9.eastmoney.com/soft/gp5_511.php?code='+code+'01'
+                holder_page=requests.get(holderurl)
+                i=0
+                finaldata=[]
+                data=re.findall(r'<span>(.*)</span>',holder_page.text)
+                if data!=[]:
+                    for each in data:
+                        if each!="股东总户数(户)":
+                            i=i+1
+                        else:
+                            break
+                    data=data[:i*9-1]
+                    for each in data:
+                        out=each.replace('&nbsp;','')
+                        out=out.replace(' ','')
+                        out=out.replace(',','')
+                        finaldata.append(out)
+                    period=finaldata[:i-1]
+                    totalholder=finaldata[i:i*2-1]
+                    toptenholder=finaldata[i*8:]
+            if marketype=='0':
+                newurl='http://push2delay.eastmoney.com/api/qt/slist/get?fltt=1&invt=2&cb=jQuery351044383936848104066_1661598780929&fields=f14&secid=0.'+code+'&ut=fa5fd1943c7b386f172d6893dbfba10b&pn=1&np=1&spt=1&wbp2u=%7C0%7C0%7C0%7Cweb&_=1661598780930'
+                r1=requests.get(newurl)
+                try:
+                    trade=re.findall('"f14":"(.*?)"',r1.text)[1]
+                except :
+                    trade='B'
+                toptenurl='http://f9.eastmoney.com/soft/gp51_511.php?code='+code+'02'
+                topten_page=requests.get(toptenurl)
+                topten=re.findall('<p class="%"><span>(.*)&nbsp;</span>',topten_page.text)
+                topten=topten[:10]
+                sum=0
+                for each in topten:
+                    each=float(each)
+                    if each>=5:
+                        sum=sum+each     
+                holderurl='http://f9.eastmoney.com/soft/gp5_511.php?code='+code+'02'
+                holder_page=requests.get(holderurl)
+                i=0
+                finaldata=[]
+                data=re.findall(r'<span>(.*)</span>',holder_page.text)
+                if data!=[]:
+                    for each in data:
+                        if each!="股东总户数(户)":
+                            i=i+1
+                        else:
+                            break
+                    data=data[:i*9-1]
+                    for each in data:
+                        out=each.replace('&nbsp;','')
+                        out=out.replace(' ','')
+                        out=out.replace(',','')
+                        finaldata.append(out)
+                    period=finaldata[:i-1]
+                    totalholder=finaldata[i:i*2-1]
+                    toptenholder=finaldata[i*8:]
+            return {
+                "code": code,
+                "period": period,
+                "totalholder":totalholder,
+                "toptenholder":toptenholder,
+                "PE":PE,
+                "PB":PB,
+                "FAMC":FAMC,
+                "SUM":sum,
+                "name":name,
+                "trade":trade
+                }
+
+    def FAMC_page(self,response):
+        PE=re.findall('<span id="gt6_2">(.*)</span>',response.text)
+        PB=re.findall('<span id="gt13_2">(.*)</span>',response.text)
+        FAMC=re.findall('<span id="gt14_2">(.*)亿</span>',response.text)
+        return{
+            'PE':PE,
+            'PB':PB,
+            'FAMC':FAMC
+        }
+    def topten_page(self,response):
+        topten=re.findall('<p class="%"><span>(.*)&nbsp;</span>',response.text)
+        topten=topten[:10]
+        sum=0
+        for each in topten:
+            each=float(each)
+            if each>=5:
+                sum=sum+each
+        return{
+            "sum":sum
+        }
