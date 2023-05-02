@@ -65,6 +65,12 @@ class Handler(BaseHandler):
             FAMC='B'
         if FAMC in ['"-"','B']:
             FAMC='B'
+            period='-'
+            totalholder='-'
+            toptenholder='-'
+            trade='-'
+            sum='-'
+            
         else:
             FAMC=float(FAMC)/100000000
         try:
@@ -109,6 +115,10 @@ class Handler(BaseHandler):
                     period=finaldata[:i-1]
                     totalholder=finaldata[i:i*2-1]
                     toptenholder=finaldata[i*8:]
+                else:
+                    period='-'
+                    totalholder='-'
+                    toptenholder='-'
             if marketype=='0':
                 newurl='http://push2delay.eastmoney.com/api/qt/slist/get?fltt=1&invt=2&cb=jQuery351044383936848104066_1661598780929&fields=f14&secid=0.'+code+'&ut=fa5fd1943c7b386f172d6893dbfba10b&pn=1&np=1&spt=1&wbp2u=%7C0%7C0%7C0%7Cweb&_=1661598780930'
                 r1=requests.get(newurl)
@@ -145,6 +155,10 @@ class Handler(BaseHandler):
                     period=finaldata[:i-1]
                     totalholder=finaldata[i:i*2-1]
                     toptenholder=finaldata[i*8:]
+                else:
+                    period='-'
+                    totalholder='-'
+                    toptenholder='-'                    
             return {
                 "code": code,
                 "period": period,
